@@ -38,10 +38,10 @@ def test_tool_metadata():
 
 
 def test_missing_api_key_raises():
-    """没有 API key 时应抛 ValueError，而不是静默返回字符串。"""
-    backend = QueritContentsBackend(api_key=None)
+    """环境里没有 key 时应抛 ValueError，而不是静默返回字符串。"""
     with patch.dict(os.environ, {}, clear=True):
-        backend.api_key = None
+        backend = QueritContentsBackend()
+        assert backend.api_key is None
         with pytest.raises(ValueError, match="API key not found"):
             backend.fetch([GOOD_URL])
 
@@ -95,6 +95,83 @@ def test_status_joined_by_id_not_by_position():
     ]
 
 
+def test_status_only_id_is_not_dropped():
+    """statuses 里有但 results 里没有的 id 不能静默消失。"""
+    backend = QueritContentsBackend(api_key="dummy-key")
+    payload = {
+        "results": [{"id": "1", "url": GOOD_URL, "content": "hello"}],
+        "statuses": [
+            {"id": "1", "status": "success"},
+            {"id": "2", "status": "failed"},
+        ],
+    }
+
+    results = backend._parse(payload)
+
+    assert len(results) == 2, "请求了 2 个 URL 就必须返回 2 条结果"
+    assert [(r.id, r.status) for r in results] == [("1", "success"), ("2", "failed")]
+
+
+def test_unusual_status_values_become_unknown():
+    """缺失、null 或非预期的 status 都应归一为 unknown，不能漏进输出。"""
+    backend = QueritContentsBackend(api_key="dummy-key")
+    payload = {
+        "results": [
+            {"id": "1", "url": "https://a.example", "content": "x"},
+            {"id": "2", "url": "https://b.example", "content": "y"},
+            {"id": "3", "url": "https://c.example", "content": "z"},
+        ],
+        "statuses": [
+            {"id": "1"},
+            {"id": "2", "status": None},
+            {"id": "3", "status": "SUCCESS"},
+        ],
+    }
+
+    results = backend._parse(payload)
+
+    assert [r.status for r in results] == ["unknown", "unknown", "success"]
+
+    output = WebContentsTool()._format_results(results)
+    assert "[]" not in output
+    assert "[NONE]" not in output
+    assert output.count("[UNKNOWN]") == 2
+
+
+def test_result_without_id_does_not_inherit_foreign_status():
+    """没有 id 的结果不应借用别人的 status。"""
+    backend = QueritContentsBackend(api_key="dummy-key")
+    payload = {
+        "results": [{"url": "https://a.example", "content": "x"}],
+        "statuses": [{"status": "failed"}],
+    }
+
+    results = backend._parse(payload)
+
+    assert [r.status for r in results] == ["unknown"]
+
+
+def test_payload_uses_the_documented_field_names():
+    """请求体必须用接口要求的驼峰字段名，写错了要能被测出来。"""
+    backend = QueritContentsBackend(api_key="dummy-key")
+
+    with patch("langchain_websearch.querit_contents.requests.post") as mock_post:
+        mock_post.return_value.json.return_value = {"results": [], "statuses": []}
+        mock_post.return_value.raise_for_status.return_value = None
+        backend.fetch([GOOD_URL], format="html", crawl_timeout=20, extras_meta=True)
+
+    kwargs = mock_post.call_args.kwargs
+    assert kwargs["json"] == {
+        "urls": [GOOD_URL],
+        "format": "html",
+        "crawlTimeout": 20,
+        "extrasMeta": True,
+    }
+    assert kwargs["headers"]["Authorization"] == "Bearer dummy-key"
+    # connect 超时要短，read 超时要随 URL 数量放大
+    assert kwargs["timeout"] == (backend.CONNECT_TIMEOUT, 20 * 1 + 30)
+
+
 def test_format_results_marks_failures():
     """失败条目在输出里应大写标记，成功条目附带字符数。"""
     tool = WebContentsTool()
@@ -124,12 +201,18 @@ def test_format_results_marks_failures():
 @requires_api_key
 def test_fetch_single_url_success():
     """单个 URL 应抓到非空正文。"""
-    tool = WebContentsTool()
-    output = tool.invoke({"urls": [GOOD_URL]})
+    backend = QueritContentsBackend()
+    results = backend.fetch([GOOD_URL])
 
+    assert len(results) == 1
+    assert results[0].status == "success"
+    assert len(results[0].content) > 0, "正文为空说明抓取没有真正成功"
+
+    output = WebContentsTool()._format_results(results)
     assert "[success]" in output
     assert "[FAILED]" not in output
-    assert len(output) > 50
+    assert "No content retrieved." not in output
+    assert "Content is empty." not in output
 
 
 @requires_api_key
@@ -138,6 +221,7 @@ def test_batch_partial_failure():
     backend = QueritContentsBackend()
     results = backend.fetch([GOOD_URL, BAD_URL])
 
+    assert len(results) == 2, "请求了 2 个 URL 就必须返回 2 条结果，不能静默丢弃"
     statuses = {r.url: r.status for r in results}
     assert statuses.get(GOOD_URL) == "success"
     assert statuses.get(BAD_URL) == "failed"

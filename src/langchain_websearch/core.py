@@ -2,9 +2,9 @@
 Core components for LangChain WebSearch Tool.
 """
 
-from typing import List, Literal, Optional, Type
+from typing import Any, List, Literal, Optional, Type
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 from langchain.tools import BaseTool
 
 
@@ -31,6 +31,10 @@ class WebSearchTool(BaseTool):
     num_results: int = Field(default=10, ge=1, le=50)
     region: str = Field(default="en-US")  # 保留但不使用
     safe_search: bool = Field(default=True)  # 保留但不使用
+
+    # Declared explicitly so the assignment in __init__ also works under the
+    # pydantic v1 semantics that older langchain-core releases are built on.
+    _backend_instance: Any = PrivateAttr(default=None)
 
     class Config:
         arbitrary_types_allowed = True
@@ -68,9 +72,9 @@ class WebSearchTool(BaseTool):
 
         return "\n".join(formatted)
 
-    async def _arun(self, query: str) -> str:
-        """Async version of the search tool."""
-        return self._run(query)
+    # _arun is intentionally not overridden: BaseTool's default already offloads
+    # _run to a thread executor, whereas awaiting _run directly would block the
+    # event loop for the whole HTTP call.
 
 
 class ContentMeta(BaseModel):
@@ -116,6 +120,8 @@ class WebContentsTool(BaseTool):
     crawl_timeout: int = Field(default=10, ge=1, le=60)
     extras_meta: bool = Field(default=False)
 
+    _backend_instance: Any = PrivateAttr(default=None)
+
     class Config:
         arbitrary_types_allowed = True
 
@@ -144,9 +150,8 @@ class WebContentsTool(BaseTool):
         """Format fetched contents into a readable string."""
         formatted = []
         for i, result in enumerate(results, 1):
-            label = (
-                result.status if result.status == "success" else result.status.upper()
-            )
+            succeeded = result.status.lower() == "success"
+            label = result.status if succeeded else result.status.upper()
             formatted.append(f"{i}. {result.url}  [{label}]")
 
             if result.meta is not None:
@@ -160,6 +165,9 @@ class WebContentsTool(BaseTool):
             if result.content:
                 formatted.append(f"   Content ({len(result.content)} chars):")
                 formatted.append(result.content)
+            elif succeeded:
+                # Distinguish "crawled but empty" from "could not be crawled".
+                formatted.append("   Content is empty.")
             else:
                 formatted.append("   No content retrieved.")
 
@@ -167,6 +175,6 @@ class WebContentsTool(BaseTool):
 
         return "\n".join(formatted)
 
-    async def _arun(self, urls: List[str]) -> str:
-        """Async version of the contents tool."""
-        return self._run(urls)
+    # See the note on WebSearchTool: BaseTool's default _arun already offloads
+    # _run to a thread executor, which matters more here because a contents
+    # request can legitimately take a minute.

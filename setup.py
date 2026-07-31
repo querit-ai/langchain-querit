@@ -27,8 +27,8 @@ setup(
     ],
     python_requires=">=3.9",
     install_requires=[
-        "langchain>=0.0.300",
-        "pydantic>=1.10.0",
+        "langchain>=0.3",
+        "pydantic>=2.0",
         "requests>=2.28.0",
         "python-dotenv>=1.0.0",
     ],

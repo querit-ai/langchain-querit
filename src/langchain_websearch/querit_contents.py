@@ -4,7 +4,7 @@ Querit Contents backend implementation.
 
 import os
 import requests
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from .core import ContentMeta, ContentResult
 
@@ -14,6 +14,8 @@ class QueritContentsBackend:
 
     BASE_URL = "https://api.querit.ai/v1/contents"
     MAX_URLS = 10
+    CONNECT_TIMEOUT = 10
+    VALID_STATUSES = ("success", "failed")
 
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv("QUERIT_API_KEY")
@@ -31,12 +33,8 @@ class QueritContentsBackend:
         **kwargs: Any,
     ) -> List[ContentResult]:
         """Fetch page content for the given URLs using Querit Contents API."""
-        if not self.validate_credentials():
-            raise ValueError(
-                "Querit API key not found. "
-                "Please set QUERIT_API_KEY environment variable."
-            )
-
+        # Validate the input shape before the credential check, so a bad URL list
+        # is not reported as a missing key.
         if not urls:
             raise ValueError("At least one URL is required.")
 
@@ -44,6 +42,12 @@ class QueritContentsBackend:
             raise ValueError(
                 f"Too many URLs: {len(urls)}. "
                 f"Querit Contents API accepts at most {self.MAX_URLS} URLs."
+            )
+
+        if not self.validate_credentials():
+            raise ValueError(
+                "Querit API key not found. "
+                "Please set QUERIT_API_KEY environment variable."
             )
 
         headers = {
@@ -59,13 +63,14 @@ class QueritContentsBackend:
             "extrasMeta": extras_meta,
         }
 
-        # The client timeout must exceed the server-side per-page crawl timeout,
-        # otherwise the client gives up before the server responds.
+        # requests applies a single scalar to both the connect and the read
+        # timeout, so pass an explicit pair. crawlTimeout is per page, so the
+        # read budget has to scale with the number of pages requested.
         response = requests.post(
             self.BASE_URL,
             headers=headers,
             json=payload,
-            timeout=crawl_timeout + 30,
+            timeout=(self.CONNECT_TIMEOUT, crawl_timeout * len(urls) + 30),
         )
         response.raise_for_status()
 
@@ -74,15 +79,22 @@ class QueritContentsBackend:
     def _parse(self, data: Dict[str, Any]) -> List[ContentResult]:
         """Merge the separate results/statuses arrays into ContentResult items."""
         # Content and success/failure arrive in two separate arrays that are
-        # correlated by id, so join on id rather than on list position.
+        # correlated by id, so join on id rather than on list position. Entries
+        # without an id are skipped rather than collapsed onto a shared "" key,
+        # which would attribute one entry's status to unrelated results.
         status_by_id = {
-            str(item.get("id", "")): str(item.get("status", ""))
+            str(item.get("id")): self._normalise_status(item.get("status"))
             for item in data.get("statuses") or []
+            if item.get("id")
         }
 
         results: List[ContentResult] = []
+        seen: Set[str] = set()
+
         for item in data.get("results") or []:
-            item_id = str(item.get("id", ""))
+            item_id = str(item.get("id") or "")
+            if item_id:
+                seen.add(item_id)
             results.append(
                 ContentResult(
                     id=item_id,
@@ -93,7 +105,21 @@ class QueritContentsBackend:
                 )
             )
 
+        # An id present in statuses but missing from results would otherwise
+        # vanish, silently returning fewer URLs than were requested.
+        for item_id, status in status_by_id.items():
+            if item_id not in seen:
+                results.append(
+                    ContentResult(id=item_id, url="", content="", status=status)
+                )
+
         return results
+
+    @classmethod
+    def _normalise_status(cls, value: Any) -> str:
+        """Map the server-reported status onto success / failed / unknown."""
+        status = str(value or "").strip().lower()
+        return status if status in cls.VALID_STATUSES else "unknown"
 
     @staticmethod
     def _parse_meta(extras: Optional[Dict[str, Any]]) -> Optional[ContentMeta]:

@@ -16,9 +16,10 @@ A powerful LangChain toolkit for Querit APIs: web search and web page content fe
 
 ### Requirements
 
-Python 3.9 or newer. Python 3.8 is not supported: on 3.8, `pip` can only resolve
+Python 3.9 or newer, with `langchain>=0.3` and `pydantic>=2.0`. Older floors were
+declared through 0.0.2 but did not work: pinning `pydantic<2` makes pip resolve
 `langchain-core` 0.2.x, whose `BaseTool` is built on the pydantic v1 compatibility
-layer, and the tools fail to initialise there.
+layer, and the tools then fail to construct.
 
 ### Installation
 
