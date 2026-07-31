@@ -6,11 +6,14 @@ Thank you for your interest in contributing to LangChain WebSearch Tool!
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/KKKPJSKEY/langchain-querit.git
+git clone https://github.com/querit-ai/langchain-querit.git
 cd langchain-querit
 ```
 
 ### 2. Install Dependencies
+
+Requires Python 3.9 or newer.
+
 ```bash
 pip install -e ".[dev]"
 ```

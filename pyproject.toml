@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "langchain-querit"
-version = "0.0.2"
+version = "0.0.3"
 description = "A LangChain tool for Querit search functionality"
 readme = "README.md"
 authors = [
-    {name = "Your Name", email = "your-real-email@example.com"},
+    {name = "Querit.ai", email = "support@querit.ai"},
 ]
 license = {text = "MIT"}
 keywords = ["langchain", "querit", "search-tool"]
@@ -18,12 +18,11 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     "langchain>=0.0.300",
     "pydantic>=1.10.0",
@@ -41,7 +40,7 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/KKKPJSKEY/langchain-querit"
+Homepage = "https://github.com/querit-ai/langchain-querit"
 
 [tool.setuptools.packages.find]
 where = ["src"]
