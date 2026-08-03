@@ -22,7 +22,7 @@ This guide provides detailed instructions on how to configure your project to au
 2. Select "Add a new trusted publisher"
 3. Fill in the following information:
    - **GitHub Actions workflow file**: `.github/workflows/publish.yml`
-   - **Repository**: `KKKPJSKEY/langchain-querit`
+   - **Repository**: `querit-ai/langchain-querit`
    - **Workflow name**: Leave blank or fill in the complete workflow path
 4. Click "Add trusted publisher"
 
@@ -30,7 +30,7 @@ This guide provides detailed instructions on how to configure your project to au
 1. The newly created Trusted Publisher will appear in the list
 2. Status should be "Active" or "Pending first use"
 3. Ensure the following information is correct:
-   - GitHub repository: `KKKPJSKEY/langchain-querit`
+   - GitHub repository: `querit-ai/langchain-querit`
    - Workflow file: `.github/workflows/publish.yml`
 
 ### 🛡️ **Security Features**
@@ -108,7 +108,7 @@ steps:
 ```
 
 ### ✅ **Workflow Includes:**
-1. **Multi-Python version testing** (3.8-3.11)
+1. **Multi-Python version testing** (3.9-3.11)
 2. **Code quality checks** (black, flake8, mypy)
 3. **Package build verification**
 4. **Conditional publishing** (only main branch and release triggers)

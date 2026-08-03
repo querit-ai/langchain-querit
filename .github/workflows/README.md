@@ -7,7 +7,7 @@ This directory contains GitHub Actions workflows for automated testing, building
 ### 1. `publish.yml` - Main publishing workflow
 - **Triggers:** On new GitHub releases or manual dispatch
 - **Jobs:**
-  - `test`: Runs tests on multiple Python versions (3.8-3.11)
+  - `test`: Runs tests on multiple Python versions (3.9-3.11)
   - `deploy`: Builds and publishes to PyPI
   - `release-docs`: Updates documentation
   - `notify`: Success/failure notifications
@@ -61,7 +61,7 @@ You can manually trigger the workflow:
 ## 📊 Test Configuration
 
 The workflow includes:
-- Python 3.8, 3.9, 3.10, 3.11 testing
+- Python 3.9, 3.10, 3.11 testing
 - Code formatting (black)
 - Linting (flake8)
 - Type checking (mypy)

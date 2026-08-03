@@ -2,9 +2,9 @@
 Core components for LangChain WebSearch Tool.
 """
 
-from typing import List
+from typing import Any, List, Literal, Optional, Type
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 from langchain.tools import BaseTool
 
 
@@ -31,6 +31,10 @@ class WebSearchTool(BaseTool):
     num_results: int = Field(default=10, ge=1, le=50)
     region: str = Field(default="en-US")  # 保留但不使用
     safe_search: bool = Field(default=True)  # 保留但不使用
+
+    # Declared explicitly so the assignment in __init__ also works under the
+    # pydantic v1 semantics that older langchain-core releases are built on.
+    _backend_instance: Any = PrivateAttr(default=None)
 
     class Config:
         arbitrary_types_allowed = True
@@ -68,6 +72,109 @@ class WebSearchTool(BaseTool):
 
         return "\n".join(formatted)
 
-    async def _arun(self, query: str) -> str:
-        """Async version of the search tool."""
-        return self._run(query)
+    # _arun is intentionally not overridden: BaseTool's default already offloads
+    # _run to a thread executor, whereas awaiting _run directly would block the
+    # event loop for the whole HTTP call.
+
+
+class ContentMeta(BaseModel):
+    """Extra metadata for a fetched page, returned when extras_meta is enabled."""
+
+    title: str = ""
+    url: str = ""
+    publish_time: str = ""
+    site_name: str = ""
+    site_icon: str = ""
+
+
+class ContentResult(BaseModel):
+    """Fetched web page content model."""
+
+    id: str
+    url: str
+    content: str
+    status: str  # "success" | "failed" | "unknown"
+    meta: Optional[ContentMeta] = None
+
+
+class ContentsInput(BaseModel):
+    """Input schema for WebContentsTool."""
+
+    urls: List[str] = Field(
+        ..., description="A list of 1 to 10 URLs to fetch page content from."
+    )
+
+
+class WebContentsTool(BaseTool):
+    """LangChain tool for fetching page content using Querit Contents API."""
+
+    name: str = "web_contents"
+    description: str = (
+        "A tool for fetching the full content of web pages using Querit Contents "
+        "API. Useful when you already have URLs and need their actual text. "
+        "Input should be a list of 1 to 10 URLs."
+    )
+    args_schema: Type[BaseModel] = ContentsInput
+
+    format: Literal["text", "markdown", "html"] = Field(default="markdown")
+    crawl_timeout: int = Field(default=10, ge=1, le=60)
+    extras_meta: bool = Field(default=False)
+
+    _backend_instance: Any = PrivateAttr(default=None)
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # 延迟导入以避免循环导入
+        from .querit_contents import QueritContentsBackend
+
+        self._backend_instance = QueritContentsBackend()
+
+    def _run(self, urls: List[str]) -> str:
+        """Fetch page content and return formatted results."""
+        results = self._backend_instance.fetch(
+            urls=urls,
+            format=self.format,
+            crawl_timeout=self.crawl_timeout,
+            extras_meta=self.extras_meta,
+        )
+
+        if not results:
+            return "No content retrieved."
+
+        return self._format_results(results)
+
+    def _format_results(self, results: List[ContentResult]) -> str:
+        """Format fetched contents into a readable string."""
+        formatted = []
+        for i, result in enumerate(results, 1):
+            succeeded = result.status.lower() == "success"
+            label = result.status if succeeded else result.status.upper()
+            formatted.append(f"{i}. {result.url}  [{label}]")
+
+            if result.meta is not None:
+                if result.meta.title:
+                    formatted.append(f"   Title: {result.meta.title}")
+                if result.meta.site_name:
+                    formatted.append(f"   Site: {result.meta.site_name}")
+                if result.meta.publish_time:
+                    formatted.append(f"   Published: {result.meta.publish_time}")
+
+            if result.content:
+                formatted.append(f"   Content ({len(result.content)} chars):")
+                formatted.append(result.content)
+            elif succeeded:
+                # Distinguish "crawled but empty" from "could not be crawled".
+                formatted.append("   Content is empty.")
+            else:
+                formatted.append("   No content retrieved.")
+
+            formatted.append("")
+
+        return "\n".join(formatted)
+
+    # See the note on WebSearchTool: BaseTool's default _arun already offloads
+    # _run to a thread executor, which matters more here because a contents
+    # request can legitimately take a minute.
