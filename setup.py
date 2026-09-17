@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="langchain-querit",
-    version="0.0.3",
+    version="0.0.4",
     author="Querit.ai",
     author_email="support@querit.ai",
     description="A LangChain tool for Querit search functionality",

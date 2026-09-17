@@ -6,6 +6,7 @@ A powerful LangChain toolkit for Querit APIs: web search and web page content fe
 
 - **Querit Search API Integration**: Powered by Querit Search API
 - **Querit Contents API Integration**: Fetch full page content by URL, up to 10 URLs per call
+- **Querit Monitor Integration**: Schedule a search to rerun on an interval and return only new results
 - **API Key Management**: Secure API key handling with environment variables
 - **LangChain Integration**: Seamlessly integrates with LangChain agents and chains
 - **Structured Results**: Returns formatted search results with metadata
@@ -148,6 +149,67 @@ tests can tell success from failure:
 - Invalid `format` → `pydantic.ValidationError`
 - HTTP 401 / 400 / 429 / 5xx → `requests.HTTPError`
 - A single URL that cannot be crawled → not an exception; that entry gets `status="failed"`
+
+## 🛰️ Search Monitors
+
+A **Monitor** turns a single search into a scheduled task: register a query and
+an interval, and Querit reruns it on schedule, deduplicates against past runs
+and returns only what's new. It fits ongoing-attention cases such as competitor
+activity, funding news, policy changes or new papers.
+
+Nine tools wrap the Monitor API (all read `QUERIT_API_KEY` from the environment):
+
+- `MonitorCreateTool` — create a scheduled monitor
+- `MonitorListTool` — list monitors (filter by status/name)
+- `MonitorGetTool` — full details of one monitor
+- `MonitorUpdateTool` — change name / schedule / search query
+- `MonitorDeleteTool` — delete a monitor
+- `MonitorPauseTool` / `MonitorResumeTool` — stop / resume scheduled runs
+- `MonitorTriggerTool` — run once immediately
+- `MonitorRecentTool` — recent executions with their result content (main way to read new results)
+
+### Basic Usage
+
+```python
+from langchain_websearch import (
+    MonitorCreateTool, MonitorTriggerTool, MonitorRecentTool,
+)
+
+# Create a monitor that reruns daily. period is one of 1h/2h/6h/12h/24h/1d/7d.
+created = MonitorCreateTool().invoke({
+    "name": "AI Funding Tracker",
+    "query": "AI startups Series A funding",
+    "period": "1d",
+    "count": 10,
+})
+print(created)  # -> "Created monitor <id> (status=active, next_trigger_at=...)."
+
+# Run it once now and read the results (use the monitor_id from create).
+MonitorTriggerTool().invoke({"monitor_id": "<monitor_id>"})
+print(MonitorRecentTool().invoke({"monitor_id": "<monitor_id>", "limit": 5}))
+```
+
+Creating a monitor does not run it immediately — the first run happens at
+`next_trigger_at`; call `MonitorTriggerTool` to run it right away while testing.
+`monitor_update` replaces the whole `search` object rather than merging fields.
+
+### Structured Access
+
+For programmatic use, `QueritMonitorBackend` returns the raw JSON instead of a
+formatted string:
+
+```python
+from langchain_websearch import QueritMonitorBackend
+
+backend = QueritMonitorBackend()
+created = backend.create("AI Funding Tracker", "AI Series A funding", "1d", count=10)
+monitor_id = created["data"]["monitor_id"]
+backend.trigger(monitor_id)
+print(backend.recent(monitor_id, limit=5))
+```
+
+See [`examples/monitor_usage.py`](examples/monitor_usage.py) for a runnable
+create → trigger → read → delete smoke test.
 
 ## 🧪 Testing
 
