@@ -5,6 +5,25 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.4] - 2026-09-17
+
+### Added
+
+- Querit Monitor integration. A Monitor turns a single search into a scheduled
+  task that reruns on an interval, deduplicates against past runs and surfaces
+  only new results. Nine LangChain tools wrap the Monitor REST API
+  (`/v1/monitors...`): `MonitorCreateTool`, `MonitorListTool`, `MonitorGetTool`,
+  `MonitorUpdateTool`, `MonitorDeleteTool`, `MonitorPauseTool`,
+  `MonitorResumeTool`, `MonitorTriggerTool` and `MonitorRecentTool`.
+- `QueritMonitorBackend`, the HTTP backend for the Monitor API, usable directly
+  when you want the raw JSON instead of a formatted string.
+- Input models `MonitorCreateInput`, `MonitorListInput`, `MonitorIdInput`,
+  `MonitorUpdateInput` and `MonitorRecentInput`.
+- `examples/monitor_usage.py`, a runnable smoke test that creates, triggers and
+  reads a monitor, then deletes it.
+- `tests/test_monitor.py`, verifying the request method, URL, query params and
+  JSON body each backend method builds, plus the missing-key error path.
+
 ## [0.0.3] - 2026-07-31
 
 ### Added
@@ -79,5 +98,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial public release: `WebSearchTool` and `QueritSearchBackend` wrapping the
   Querit Search API (`POST /v1/search`).
 
+[0.0.4]: https://github.com/querit-ai/langchain-querit/releases/tag/v0.0.4
 [0.0.3]: https://github.com/querit-ai/langchain-querit/releases/tag/v0.0.3
 [0.0.2]: https://github.com/querit-ai/langchain-querit/releases/tag/v0.0.2
